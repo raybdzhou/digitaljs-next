@@ -1,0 +1,166 @@
+<html><head>
+	<title>DigitalJs+</title>
+	<script type="text/javascript" src="./yosysjs/yosysjs.js"></script>
+	<script type="text/javascript" src="./digitaljs/main.js"></script>
+  <script type="text/javascript" src="./yosys2digitaljs/bundle.js"></script>
+</head><body>
+	<h1>DigitalJs+</h1>
+  <div>
+    <span>
+      <input type="file" id="files" style="display: none" onChange="imports();" />
+      <input type="button" id="imports" style="height: 36px;width: 120px;color: white;background: #1E90FF;font-size: 16px;border-radius: 4px;border-width: 0px;" value="import .v/.sv" />
+    </span>
+    <div style="margin: 2px">
+      <label for="optimize">Optimize in Yosys</label>
+      <input type="checkbox" id="optimize" value="optimize">
+    </div>
+    <div style="margin: 2px">
+      <label for="fsm-opt">FSM transform</label>
+      <select id="fsm-opt">
+        <option value="no-fsm" selected>No Fsm transform</option>
+        <option value="fsm">Fsm transform</option>
+        <option value="fsm-nomap">Fsm as circuit element</option>
+      </select>
+    </div>
+    <div style="margin: 2px">
+      <label for="fsm-expand">Merge more logic into FSM</label>
+      <input type="checkbox" id="fsm-expand" value="fsm-expand">
+    </div>
+    <div style="margin: 2px">
+      <input type="button" id="sim" style="height: 36px;width: 108px;color: white;background: #1E90FF;font-size: 16px;border-radius: 4px;border-width: 0px;" value="synthesis" />
+    </div>
+  </div>
+  <div><textarea id="output" style="width: 100%; height: 500px"></textarea></div>
+	<div>
+			<button name="start" type="button">▶️</button>
+			<button name="stop" type="button">⏹️</button>
+	</div>
+	<div id="paper">
+	</div>
+	<div>
+			<input name="fixed" type="checkbox">Fixed Mode</input>
+			<button name="json" type="button">Serialize and Reload</button>
+			<input name="layout" type="checkbox">Include layout information</button>
+	</div>
+	<div>
+			<button name="ppt_up" type="button">+</button><button name="ppt_down">-</button><button name="left">&lt;</button><button name="right">&gt;</button><button name="live">live</button>
+	</div>
+	<div id="monitor">
+	</div>
+	<div id="iopanel">
+	</div>
+	<script type='text/javascript'>
+		YosysJS.load_viz();
+		var ys = YosysJS.create("", function() {
+			// do nothing
+		});
+
+		ys.echo = true;
+
+		var circuit, monitor, monitorview, iopanel, paper, current_file = 'input.v';
+    var start = $('button[name=start]');
+    var stop = $('button[name=stop]');
+    var papers = {};
+    const fixed = function (fixed) {
+      Object.values(papers).forEach(p => p.fixed(fixed));
+    }
+    const loadCircuit = function (json) {
+      circuit = new digitaljs.Circuit(json);
+      monitor = new digitaljs.Monitor(circuit);
+      monitorview = new digitaljs.MonitorView({model: monitor, el: $('#monitor') });
+      iopanel = new digitaljs.IOPanelView({model: circuit, el: $('#iopanel') });
+      circuit.on('new:paper', function(paper) {
+        paper.fixed($('input[name=fixed]').prop('checked'));
+        papers[paper.cid] = paper;
+        paper.on('element:pointerdblclick', (cellView) => {
+          window.digitaljsCell = cellView.model;
+          console.info('You can now access the doubly clicked gate as digitaljsCell in your WebBrowser console!');
+        });
+      });
+      circuit.on('changeRunning', () => {
+        if (circuit.running) {
+          start.prop('disabled', true);
+          stop.prop('disabled', false);
+        } else {
+          start.prop('disabled', false);
+          stop.prop('disabled', true);
+        }
+      });
+      paper = circuit.displayOn($('#paper'));
+      fixed($('input[name=fixed]').prop('checked'));
+      circuit.on('remove:paper', function(paper) {
+        delete papers[paper.cid];
+      });
+      circuit.start();
+    }
+    start.on('click', (e) => { circuit.start(); });
+    stop.on('click', (e) => { circuit.stop(); });
+    $('button[name=json]').on('click', (e) => {
+      monitorview.shutdown();
+      iopanel.shutdown();
+      circuit.stop();
+      const json = circuit.toJSON($('input[name=layout]').prop('checked'));
+      console.log(json);
+      loadCircuit(json);
+    });
+    $('input[name=fixed]').change(function () {
+      fixed($(this).prop('checked'));
+    });
+    $('button[name=ppt_up]').on('click', (e) => { monitorview.pixelsPerTick *= 2; });
+    $('button[name=ppt_down]').on('click', (e) => { monitorview.pixelsPerTick /= 2; });
+    $('button[name=left]').on('click', (e) => { monitorview.live = false; monitorview.start -= monitorview._width / monitorview.pixelsPerTick / 4; });
+    $('button[name=right]').on('click', (e) => { monitorview.live = false; monitorview.start += monitorview._width / monitorview.pixelsPerTick / 4; });
+    $('button[name=live]').on('click', (e) => { monitorview.live = true; });
+    $('#imports').click(() => {
+      $('#files').click();
+    });
+    $('#sim').click(() => sim());
+    function imports() {
+      document.getElementById('paper').innerHTML = null;
+      const selected = document.getElementById('files').files[0];
+      if (!selected) return;
+      current_file = selected.name.replace(/\s+/g, "-");
+      const reader = new FileReader();
+      reader.readAsText(selected);
+      reader.onload = function() {
+        document.getElementById('output').value = this.result;
+      }
+    }
+
+    function sim() {
+      const input = document.getElementById('output').value;
+      const optimize = document.getElementById('optimize').checked;
+      const fsm = document.getElementById('fsm-opt').value;
+      const fsm_expand = document.getElementById('fsm-expand').checked;
+      if (!input) {
+        alert('请输入有效描述')
+        return;
+      }
+      
+      ys.write_file(current_file, input)
+      ys.run(`read -sv ${current_file}`)
+      ys.run('hierarchy -auto-top')
+      ys.run('proc')
+      ys.run(`${optimize ? 'opt' : 'opt_clean'}`)
+      if (fsm !== 'no-fsm') {
+        ys.run(`${fsm === 'fsm' ? 'fsm' : 'fsm -nomap'} ${fsm_expand ? '-expand' : ''}`)
+      }
+      ys.run('memory -nomap')
+      ys.run('wreduce -memx');
+      ys.run(`${optimize ? 'opt -full' : 'opt_clean'}`)
+      ys.run(`write_json ${current_file}.json`)
+      const yosys_json = ys.read_file(`${current_file}.json`);
+      if (!yosys_json) {
+        alert('yosys: 解析错误，请检查输入描述是否规范');
+        return;
+      }
+      try {
+        const digitaljs_json = window.yosys2digitaljs(JSON.parse(yosys_json));
+        loadCircuit(digitaljs_json);
+      } catch (error) {
+        alert('yosys2digitaljs解析错误: ', JSON.string(error));
+        return;
+      }
+    }
+	</script>
+</body></html>
