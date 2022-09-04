@@ -15,6 +15,10 @@
       <input type="checkbox" id="optimize" value="optimize">
     </div>
     <div style="margin: 2px">
+      <label for="transform">Simplify diagram</label>
+      <input type="checkbox" id="transform" value="transform" checked>
+    </div>
+    <div style="margin: 2px">
       <label for="fsm-opt">FSM transform</label>
       <select id="fsm-opt">
         <option value="no-fsm" selected>No Fsm transform</option>
@@ -130,6 +134,7 @@
     function sim() {
       const input = document.getElementById('output').value;
       const optimize = document.getElementById('optimize').checked;
+      const transform = document.getElementById('transform').checked;
       const fsm = document.getElementById('fsm-opt').value;
       const fsm_expand = document.getElementById('fsm-expand').checked;
       if (!input) {
@@ -155,7 +160,11 @@
         return;
       }
       try {
-        const digitaljs_json = window.yosys2digitaljs(JSON.parse(yosys_json));
+        let digitaljs_json = window.yosys2digitaljs(JSON.parse(yosys_json));
+        if (transform) {
+          digitaljs_json = digitaljs.transform.transformCircuit(digitaljs_json
+          );
+        }
         loadCircuit(digitaljs_json);
       } catch (error) {
         alert('yosys2digitaljs解析错误: ', JSON.string(error));
