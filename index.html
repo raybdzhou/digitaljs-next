@@ -54,13 +54,12 @@
 	<div id="iopanel">
 	</div>
 	<script type='text/javascript'>
-		YosysJS.load_viz();
-		var ys = YosysJS.create("", function() {
-			// do nothing
-		});
-
-		ys.echo = true;
-
+    YosysJS.load_viz();
+    var ys = YosysJS.create("", function() {
+      // do nothing
+    });
+    ys.echo = true;
+    
 		var circuit, monitor, monitorview, iopanel, paper, current_file = 'input.v';
     var start = $('button[name=start]');
     var stop = $('button[name=stop]');
@@ -120,7 +119,6 @@
     });
     $('#sim').click(() => sim());
     function imports() {
-      document.getElementById('paper').innerHTML = null;
       const selected = document.getElementById('files').files[0];
       if (!selected) return;
       current_file = selected.name.replace(/\s+/g, "-");
@@ -141,7 +139,8 @@
         alert('请输入有效描述')
         return;
       }
-      
+
+      ys.run('design -reset')
       ys.write_file(current_file, input)
       ys.run(`read -sv ${current_file}`)
       ys.run('hierarchy -auto-top')
